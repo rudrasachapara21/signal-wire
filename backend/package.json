@@ -1,0 +1,8 @@
+{
+  "name": "backend",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "echo \"TODO: set up Node/Express dev server here\""
+  }
+}
