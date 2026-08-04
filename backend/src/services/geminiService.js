@@ -122,7 +122,7 @@ async function callGemini(prompt) {
   }
 
   const genAI = new GoogleGenerativeAI(geminiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
 
   // Wrap the SDK call in a manual timeout race because the SDK does not expose
   // a built-in AbortSignal option in all versions.
@@ -280,6 +280,11 @@ export async function generateReport(brandName, description, budget) {
 
   // 4. Parse & validate
   const report = parseAndValidate(rawText);
+
+  // 5. Override generatedAt with the real server timestamp.
+  //    LLMs have no real clock — they confabulate plausible-looking but wrong
+  //    dates. Never trust the model's value; always use the server clock.
+  report.generatedAt = new Date().toISOString();
 
   return report;
 }
