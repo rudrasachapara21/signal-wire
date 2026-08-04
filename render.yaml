@@ -1,0 +1,35 @@
+# render.yaml – Render deployment config for Signal Wire backend.
+# Docs: https://render.com/docs/render-yaml-spec
+#
+# HOW TO USE:
+#   1. Push this file to your GitHub repo (it must be at the repo root).
+#   2. In the Render dashboard, create a new "Blueprint" and point it at this repo.
+#   3. Set the environment variable values listed below in the Render dashboard
+#      (or via the Render CLI) — never paste real keys into this file.
+#   4. Trigger the first deploy manually from the dashboard.
+
+services:
+  - type: web
+    name: signal-wire-backend
+    runtime: node
+    # Build root is the backend/ subdirectory so Render installs only
+    # backend dependencies and uses the correct package.json.
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    # Render injects PORT automatically; index.js already reads process.env.PORT.
+    healthCheckPath: /health
+    # Free tier – upgrade to "standard" for production SLAs.
+    plan: free
+    # Environment variables – set the VALUES in the Render dashboard, not here.
+    # The "sync: false" flag means Render will not overwrite dashboard values on
+    # each deploy, and the value field is intentionally left empty (placeholder only).
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false        # Set this in Render → Environment tab
+      - key: TAVILY_API_KEY
+        sync: false        # Set this in Render → Environment tab
+      - key: CORS_ORIGIN
+        sync: false        # Set to your deployed frontend URL (e.g. https://your-app.vercel.app)
+      - key: NODE_ENV
+        value: production
