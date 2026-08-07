@@ -3,11 +3,12 @@ import { useNavigate } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Sparkles } from "lucide-react";
+import { AlertCircle, RefreshCw, Sparkles } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useReport } from "@/context/ReportContext";
 import { Button } from "@/components/ui/button";
+import { analyzeBrand } from "@/lib/api";
 import { defaultBrandProfile } from "@/lib/mock-data";
-
 
 // ─── Validation schema ────────────────────────────────────────────────────────
 
@@ -21,7 +22,7 @@ const brandProfileSchema = z.object({
   monthlyBudget: z.string().min(1, "Monthly budget is required"),
 });
 
-type BrandProfileFormValues = z.infer<typeof brandProfileSchema>;
+export type BrandProfileFormValues = z.infer<typeof brandProfileSchema>;
 
 const PRODUCT_TYPES = [
   "Physical products",
@@ -52,8 +53,8 @@ function AnalyzingState() {
         </div>
         <h1 className="mt-5 text-2xl font-bold">Building your advertising plan</h1>
         <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
-          Comparing audience behavior, platform strengths, content formats, and
-          relevant creator categories.
+          Analyzing audience behavior, platform strengths, content formats, and
+          relevant creator categories using AI.
         </p>
       </div>
     </section>
@@ -64,12 +65,15 @@ function AnalyzingState() {
 
 export function BrandProfile() {
   const { user, requireAuth } = useAuth();
+  const { setReport } = useReport();
   const navigate = useNavigate();
   const [analyzing, setAnalyzing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
+    getValues,
     formState: { errors },
   } = useForm<BrandProfileFormValues>({
     resolver: zodResolver(brandProfileSchema),
@@ -82,24 +86,31 @@ export function BrandProfile() {
     },
   });
 
-  function onValidSubmit() {
-    // Immediate action (component mounted — show animation then navigate)
-    function runImmediate() {
-      setAnalyzing(true);
-      setTimeout(() => void navigate({ to: "/strategy-report" }), 2200);
-    }
+  async function executeAnalysis(values: BrandProfileFormValues) {
+    setAnalyzing(true);
+    setErrorMessage(null);
 
-    // Deferred action (called post-login — component may be unmounted)
-    function runDeferred() {
+    try {
+      const generatedReport = await analyzeBrand(values);
+      setReport(generatedReport);
+      setAnalyzing(false);
       void navigate({ to: "/strategy-report" });
+    } catch (err: any) {
+      setAnalyzing(false);
+      setErrorMessage(
+        err.message || "Failed to connect to backend server. Please check that the server is running."
+      );
     }
+  }
 
+  function onValidSubmit(values: BrandProfileFormValues) {
     if (user) {
-      // Already authenticated — show the analyzing animation
-      runImmediate();
+      void executeAnalysis(values);
     } else {
-      // Not authenticated — store the deferred action and go to login
-      requireAuth(runDeferred, () => void navigate({ to: "/login" }));
+      requireAuth(
+        () => void executeAnalysis(values),
+        () => void navigate({ to: "/login" })
+      );
     }
   }
 
@@ -115,6 +126,27 @@ export function BrandProfile() {
         Plain language is perfect. Signal Wire uses these details to find the
         right advertising channels, content formats, and creator types.
       </p>
+
+      {errorMessage && (
+        <div className="mt-6 max-w-3xl rounded-lg border border-destructive/30 bg-destructive/10 p-5 text-destructive">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={20} className="mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold">Analysis failed</p>
+              <p className="mt-1 text-sm opacity-90">{errorMessage}</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void executeAnalysis(getValues())}
+              className="shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10"
+            >
+              <RefreshCw size={14} className="mr-1.5" />
+              Try again
+            </Button>
+          </div>
+        </div>
+      )}
 
       <section className="mt-6 max-w-3xl rounded-lg border border-border bg-card p-4 shadow-sm sm:mt-8 sm:p-6">
         <form

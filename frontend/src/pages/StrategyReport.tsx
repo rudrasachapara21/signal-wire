@@ -1,15 +1,44 @@
-import { BookOpen } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { BarChart3, BookOpen, Sparkles } from "lucide-react";
+import { useReport } from "@/context/ReportContext";
 import { Button } from "@/components/ui/button";
-import {
-  channels,
-  creators,
-  strategyReport,
-  first30Days,
-} from "@/lib/mock-data";
 
 export function StrategyReport() {
-  const { executiveRecommendation, confidenceScore, title, date } =
-    strategyReport;
+  const { report } = useReport();
+  const navigate = useNavigate();
+
+  if (!report) {
+    return (
+      <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center text-center">
+        <div className="grid size-16 place-items-center rounded-2xl bg-accent text-primary">
+          <BarChart3 size={32} />
+        </div>
+        <h1 className="mt-6 text-2xl font-bold">You haven't generated a strategy yet</h1>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          Tell us what you sell, your target audience, and budget to get a custom
+          channel allocation, creator shortlist, and 30-day action plan.
+        </p>
+        <Button
+          size="lg"
+          className="mt-6"
+          onClick={() => void navigate({ to: "/brand-profile" })}
+        >
+          <Sparkles size={17} className="mr-2" />
+          Generate strategy
+        </Button>
+      </div>
+    );
+  }
+
+  const {
+    reportTitle,
+    reportDate,
+    executiveRecommendation,
+    confidenceScore,
+    channels,
+    creators,
+    first30Days,
+  } = report;
 
   return (
     <>
@@ -17,18 +46,18 @@ export function StrategyReport() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium text-primary">
-            Strategy report · {date}
+            Strategy report · {reportDate}
           </p>
-          <h1 className="mt-2 text-2xl font-bold sm:text-3xl">{title}</h1>
+          <h1 className="mt-2 text-2xl font-bold sm:text-3xl">{reportTitle}</h1>
           <p className="mt-2 text-sm text-muted-foreground sm:text-base">
-            A practical channel and creator strategy based on your brand
-            profile.
+            A practical channel and creator strategy based on your brand profile.
           </p>
         </div>
         <Button
           variant="secondary"
           id="export-report-button"
           className="w-full shrink-0 sm:w-auto"
+          onClick={() => window.print()}
         >
           <BookOpen size={16} />
           Export report
@@ -72,7 +101,7 @@ export function StrategyReport() {
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
                     <div
                       className="h-full rounded-full bg-primary transition-all duration-700"
-                      style={{ width: `${channel.fit}%` }}
+                      style={{ width: `${Math.min(100, Math.max(0, channel.fit))}%` }}
                     />
                   </div>
                   <p className="mt-2 text-xs text-muted-foreground">
@@ -83,7 +112,7 @@ export function StrategyReport() {
             </div>
           </article>
 
-          {/* Creator shortlist — 1 col mobile, 2 col tablet (sm), 3 col desktop (md+) */}
+          {/* Creator shortlist */}
           <article className="rounded-lg border border-border bg-card p-5 sm:p-6">
             <h2 className="text-base font-bold sm:text-lg">Creator shortlist</h2>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 sm:mt-5">
@@ -111,7 +140,7 @@ export function StrategyReport() {
           </article>
         </div>
 
-        {/* Right sidebar — renders below on mobile/tablet, beside on lg+ */}
+        {/* Right sidebar */}
         <aside className="space-y-4 sm:space-y-5">
           {/* Strategy confidence */}
           <article className="rounded-lg border border-border bg-card p-5">
@@ -125,12 +154,11 @@ export function StrategyReport() {
             <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full rounded-full bg-primary"
-                style={{ width: `${confidenceScore}%` }}
+                style={{ width: `${Math.min(100, Math.max(0, confidenceScore))}%` }}
               />
             </div>
             <p className="mt-3 text-xs leading-5 text-muted-foreground">
-              High confidence based on product format, audience intent, budget,
-              and category benchmarks.
+              Calculated based on product format, audience intent, budget, and platform benchmarks.
             </p>
           </article>
 

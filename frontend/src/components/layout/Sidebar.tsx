@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useReport } from "@/context/ReportContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +46,7 @@ interface SidebarContentProps {
 
 function SidebarContent({ onClose }: SidebarContentProps) {
   const { user, logout } = useAuth();
+  const { report } = useReport();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
@@ -96,12 +98,14 @@ function SidebarContent({ onClose }: SidebarContentProps) {
         <div className="rounded-lg border border-primary/15 bg-accent p-4">
           <div className="flex items-center gap-2 text-xs font-semibold text-primary">
             <span className="signal-dot size-2 rounded-full bg-primary" />
-            ADVISOR READY
+            {report ? "STRATEGY READY" : "ADVISOR READY"}
           </div>
           <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            {user
-              ? `${user.name}'s brand profile is ready for analysis.`
-              : "Brand profile is 82% complete and ready for analysis."}
+            {report
+              ? `Strategy report active for ${report.reportTitle}.`
+              : user
+                ? "Complete your brand profile to generate your AI ad strategy."
+                : "Sign in and complete your brand profile to get started."}
           </p>
         </div>
 

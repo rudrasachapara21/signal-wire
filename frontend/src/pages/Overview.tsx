@@ -9,17 +9,9 @@ import {
   Users,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useReport } from "@/context/ReportContext";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { Button } from "@/components/ui/button";
-import {
-  channels,
-  creators,
-  checklistItems,
-  overviewStats,
-  advisorPriority,
-} from "@/lib/mock-data";
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function todayLabel(): string {
   return new Date().toLocaleDateString("en-US", {
@@ -29,19 +21,29 @@ function todayLabel(): string {
   });
 }
 
-// ─── Overview page ───────────────────────────────────────────────────────────
+const DEFAULT_CHECKLIST_ITEMS = [
+  { label: "Brand description", done: false },
+  { label: "Product category", done: false },
+  { label: "Audience profile", done: false },
+  { label: "Target locations", done: false },
+  { label: "Monthly budget", done: false },
+];
 
 export function Overview() {
   const { user } = useAuth();
+  const { report } = useReport();
   const { guard } = useRequireAuth();
   const navigate = useNavigate();
 
   const greeting = user
     ? `Good afternoon, ${user.name.split(" ")[0]}.`
     : "Good afternoon.";
-  const completedCount = checklistItems.filter((i) => i.done).length;
-  const totalCount = checklistItems.length;
-  const progressPct = Math.round((completedCount / totalCount) * 100);
+
+  const hasReport = Boolean(report);
+
+  const completedCount = hasReport ? 5 : 0;
+  const totalCount = 5;
+  const progressPct = hasReport ? 100 : 0;
 
   return (
     <>
@@ -53,9 +55,11 @@ export function Overview() {
             {greeting}
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
-            {user
-              ? "Your brand profile is ready. Here's the clearest path to launch Loom & Leaf."
-              : "Explore your AI-powered advertising plan. Sign in to generate your own strategy."}
+            {hasReport
+              ? `Your strategy for ${report?.reportTitle} is active. Here's the overall outlook.`
+              : user
+                ? "Your brand profile is ready to analyze. Complete your details to get your tailored ad plan."
+                : "Explore your AI-powered advertising plan. Sign in or analyze your brand to get started."}
           </p>
         </div>
         <Button
@@ -65,11 +69,11 @@ export function Overview() {
           onClick={() => guard(() => void navigate({ to: "/brand-profile" }))}
         >
           <Sparkles size={17} />
-          Analyze my brand
+          {hasReport ? "Update brand strategy" : "Analyze my brand"}
         </Button>
       </header>
 
-      {/* Stat cards — 1 col mobile, 2 col tablet (sm–md), 3 col desktop (lg+) */}
+      {/* Stat cards */}
       <section
         className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3"
         aria-label="Brand stats"
@@ -77,20 +81,26 @@ export function Overview() {
         {[
           {
             label: "Brand readiness",
-            value: overviewStats.brandReadiness.value,
-            note: overviewStats.brandReadiness.note,
+            value: hasReport ? `${report?.confidenceScore}%` : "0%",
+            note: hasReport
+              ? "High confidence strategy score"
+              : "Complete brand profile to analyze",
             icon: Target,
           },
           {
             label: "Best channel",
-            value: overviewStats.bestChannel.value,
-            note: overviewStats.bestChannel.note,
+            value: hasReport ? report?.channels[0]?.name || "—" : "—",
+            note: hasReport
+              ? `${report?.channels[0]?.fit}% audience fit`
+              : "No strategy generated yet",
             icon: Instagram,
           },
           {
             label: "Creator matches",
-            value: overviewStats.creatorMatches.value,
-            note: overviewStats.creatorMatches.note,
+            value: hasReport ? `${report?.creators.length}` : "—",
+            note: hasReport
+              ? `Top match: ${report?.creators[0]?.name}`
+              : "No matches yet",
             icon: Users,
           },
         ].map(({ label, value, note, icon: Icon }) => (
@@ -120,45 +130,60 @@ export function Overview() {
               Your advisor's priority
             </div>
             <h2 className="mt-3 text-xl font-bold sm:text-2xl">
-              {advisorPriority.headline}
+              {hasReport
+                ? report?.executiveRecommendation.headline
+                : "Generate your first strategy report"}
             </h2>
             <p className="mt-3 text-sm leading-6 text-background/70">
-              {advisorPriority.body}
+              {hasReport
+                ? report?.executiveRecommendation.body
+                : "Tell Signal Wire about your product, target demographic, and budget. Our AI model will calculate your ideal channel mix and creator shortlist."}
             </p>
           </div>
           <Button
             className="w-full shrink-0 bg-background text-foreground hover:bg-background/90 sm:w-auto"
-            onClick={() => void navigate({ to: "/strategy-report" })}
+            onClick={() =>
+              void navigate({
+                to: hasReport ? "/strategy-report" : "/brand-profile",
+              })
+            }
             id="open-strategy-button"
           >
-            Open strategy <ArrowRight size={16} />
+            {hasReport ? "Open strategy" : "Analyze my brand"}{" "}
+            <ArrowRight size={16} />
           </Button>
         </div>
 
-        {/* Channel cards — 1 col mobile, 2 col tablet, 3 col desktop */}
-        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {channels.map((channel, index) => (
-            <article
-              key={channel.name}
-              className="rounded-lg border border-background/15 bg-background/5 p-4"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold">
-                  {index + 1}. {channel.name}
-                </span>
-                <span className="rounded-full bg-accent/20 px-2 py-0.5 text-xs font-semibold text-accent">
-                  {channel.fit}% fit
-                </span>
-              </div>
-              <p className="mt-2 text-xs leading-5 text-background/60">
-                {channel.reason}
-              </p>
-            </article>
-          ))}
-        </div>
+        {/* Channel cards */}
+        {hasReport ? (
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {report?.channels.map((channel, index) => (
+              <article
+                key={channel.name}
+                className="rounded-lg border border-background/15 bg-background/5 p-4"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold">
+                    {index + 1}. {channel.name}
+                  </span>
+                  <span className="rounded-full bg-accent/20 px-2 py-0.5 text-xs font-semibold text-accent">
+                    {channel.fit}% fit
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-background/60">
+                  {channel.reason}
+                </p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-6 rounded-lg border border-background/15 bg-background/5 p-4 text-center text-xs text-background/60">
+            Your recommended channel mix will appear here after analysis.
+          </div>
+        )}
       </section>
 
-      {/* Bottom section — stacks on mobile/tablet, side-by-side on lg+ */}
+      {/* Bottom section */}
       <section className="mt-4 grid grid-cols-1 gap-4 sm:mt-5 lg:grid-cols-[1.2fr_.8fr]">
         {/* Creator matches */}
         <article className="rounded-lg border border-border bg-card p-4 shadow-sm sm:p-5">
@@ -171,38 +196,47 @@ export function Overview() {
                 Ranked by audience and content relevance
               </p>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void navigate({ to: "/strategy-report" })}
-              id="view-all-creators-button"
-            >
-              View all <ChevronRight size={15} />
-            </Button>
-          </div>
-          <div className="mt-4 divide-y divide-border sm:mt-5">
-            {creators.map((creator) => (
-              <div
-                key={creator.name}
-                className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0 sm:py-4"
+            {hasReport && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void navigate({ to: "/strategy-report" })}
+                id="view-all-creators-button"
               >
-                <span className="grid size-10 place-items-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
-                  {creator.initials}
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">
-                    {creator.name}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {creator.niche} · {creator.audience}
-                  </p>
-                </div>
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                  {creator.match}%
-                </span>
-              </div>
-            ))}
+                View all <ChevronRight size={15} />
+              </Button>
+            )}
           </div>
+
+          {hasReport ? (
+            <div className="mt-4 divide-y divide-border sm:mt-5">
+              {report?.creators.map((creator) => (
+                <div
+                  key={creator.name}
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-3 first:pt-0 last:pb-0 sm:py-4"
+                >
+                  <span className="grid size-10 place-items-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
+                    {creator.initials}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">
+                      {creator.name}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {creator.niche} · {creator.audience}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                    {creator.match}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-6 text-center text-sm text-muted-foreground">
+              No creator matches yet. Generate a strategy to view recommended creator archetypes.
+            </p>
+          )}
         </article>
 
         {/* Launch checklist */}
@@ -220,22 +254,25 @@ export function Overview() {
           </div>
           {/* Items */}
           <div className="mt-4 space-y-3 sm:mt-5">
-            {checklistItems.map(({ label, done }) => (
-              <div key={label} className="flex min-h-[28px] items-center gap-3 text-sm">
-                <span
-                  className={`grid size-5 shrink-0 place-items-center rounded-full ${
-                    done
-                      ? "bg-primary text-primary-foreground"
-                      : "border border-border"
-                  }`}
-                >
-                  {done && <Check size={12} />}
-                </span>
-                <span className={done ? "" : "text-muted-foreground"}>
-                  {label}
-                </span>
-              </div>
-            ))}
+            {DEFAULT_CHECKLIST_ITEMS.map(({ label }) => {
+              const done = hasReport;
+              return (
+                <div key={label} className="flex min-h-[28px] items-center gap-3 text-sm">
+                  <span
+                    className={`grid size-5 shrink-0 place-items-center rounded-full ${
+                      done
+                        ? "bg-primary text-primary-foreground"
+                        : "border border-border"
+                    }`}
+                  >
+                    {done && <Check size={12} />}
+                  </span>
+                  <span className={done ? "" : "text-muted-foreground"}>
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
           </div>
           <Button
             className="mt-5 h-11 w-full"
@@ -245,7 +282,7 @@ export function Overview() {
             }
             id="complete-profile-button"
           >
-            Complete brand profile
+            {hasReport ? "Update brand profile" : "Complete brand profile"}
           </Button>
         </article>
       </section>

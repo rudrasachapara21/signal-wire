@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { AuthProvider } from "../context/AuthContext";
+import { ReportProvider } from "../context/ReportContext";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -124,8 +125,10 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       {/* AuthProvider is client-only (no localStorage/SSR issues) — safe to wrap here. */}
       <AuthProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
+        <ReportProvider>
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          <Outlet />
+        </ReportProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
