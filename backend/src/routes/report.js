@@ -1,15 +1,106 @@
 /**
- * report.js – Express router for the /api/generate-report endpoint.
+ * report.js – Express router for Signal Wire API endpoints.
  *
- * POST /api/generate-report
- * Body: { brandName: string, description: string, budget: number }
- * Response: JSON report object | { error: string }
+ * Endpoints:
+ *
+ *   POST /api/analyze-brand    ← NEW (used by frontend)
+ *     Body: { brand_name, sell_type, description, ideal_customer, monthly_budget }
+ *     Response: StrategyReportResponse matching the frontend schema
+ *
+ *   POST /api/generate-report  ← LEGACY (richer Tavily + Gemini report)
+ *     Body: { brandName, description, budget }
+ *     Response: Legacy report object | { error: string }
  */
 
 import { Router } from "express";
-import { generateReport } from "../services/geminiService.js";
+import { analyzeForFrontend, generateReport } from "../services/geminiService.js";
 
 const router = Router();
+
+// ---------------------------------------------------------------------------
+// POST /api/analyze-brand — Frontend-facing endpoint
+// ---------------------------------------------------------------------------
+
+router.post("/analyze-brand", async (req, res) => {
+  const { brand_name, sell_type, description, ideal_customer, monthly_budget } =
+    req.body ?? {};
+
+  // ── Input validation ──────────────────────────────────────────────────────
+  const errors = [];
+
+  if (!brand_name || typeof brand_name !== "string" || !brand_name.trim()) {
+    errors.push("brand_name is required and must be a non-empty string.");
+  }
+  if (!sell_type || typeof sell_type !== "string" || !sell_type.trim()) {
+    errors.push("sell_type is required and must be a non-empty string.");
+  }
+  if (!description || typeof description !== "string" || description.trim().length < 10) {
+    errors.push("description is required and must be at least 10 characters.");
+  }
+  if (!ideal_customer || typeof ideal_customer !== "string" || !ideal_customer.trim()) {
+    errors.push("ideal_customer is required and must be a non-empty string.");
+  }
+  if (!monthly_budget || typeof monthly_budget !== "string" || !monthly_budget.trim()) {
+    errors.push("monthly_budget is required and must be a non-empty string.");
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({ error: errors.join(" ") });
+  }
+
+  // ── Call service ──────────────────────────────────────────────────────────
+  const profile = {
+    brand_name: brand_name.trim(),
+    sell_type: sell_type.trim(),
+    description: description.trim(),
+    ideal_customer: ideal_customer.trim(),
+    monthly_budget: monthly_budget.trim(),
+  };
+
+  try {
+    const report = await analyzeForFrontend(profile);
+    return res.status(200).json(report);
+  } catch (err) {
+    const message = err?.message ?? "Unknown error";
+    console.error("[POST /api/analyze-brand] Error:", message);
+
+    // Missing API key → 503
+    if (message.includes("GEMINI_API_KEY is not set")) {
+      return res.status(503).json({
+        error: "Service not configured: Gemini API key is missing.",
+      });
+    }
+
+    // Quota / rate limit → 429
+    if (
+      message.includes("quota exceeded") ||
+      message.toLowerCase().includes("rate limit")
+    ) {
+      return res.status(429).json({ error: message });
+    }
+
+    // Timeout → 504
+    if (message.toLowerCase().includes("timed out")) {
+      return res.status(504).json({
+        error: "The AI model took too long to respond. Please try again.",
+      });
+    }
+
+    // Non-JSON model output → 502
+    if (message.includes("non-JSON")) {
+      return res.status(502).json({
+        error: "AI model returned an unexpected response. Please try again.",
+      });
+    }
+
+    // Generic fallback
+    return res.status(500).json({ error: "Internal server error: " + message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/generate-report — Legacy endpoint (kept for backward compatibility)
+// ---------------------------------------------------------------------------
 
 router.post("/generate-report", async (req, res) => {
   const { brandName, description, budget } = req.body ?? {};
@@ -22,7 +113,12 @@ router.post("/generate-report", async (req, res) => {
   if (!description || typeof description !== "string" || !description.trim()) {
     errors.push("description is required and must be a non-empty string.");
   }
-  if (budget === undefined || budget === null || isNaN(Number(budget)) || Number(budget) < 0) {
+  if (
+    budget === undefined ||
+    budget === null ||
+    isNaN(Number(budget)) ||
+    Number(budget) < 0
+  ) {
     errors.push("budget is required and must be a non-negative number.");
   }
 
@@ -39,36 +135,37 @@ router.post("/generate-report", async (req, res) => {
     );
     return res.status(200).json(report);
   } catch (err) {
-    // Classify the error for the consumer without leaking internal stack traces.
     const message = err?.message ?? "Unknown error";
     console.error("[POST /api/generate-report] Error:", message);
 
-    // Missing API keys → 503 (service not configured)
     if (message.includes("_API_KEY is not set")) {
       return res.status(503).json({
         error: "Service not configured: " + message,
       });
     }
 
-    // Timeout errors → 504
     if (message.toLowerCase().includes("timed out")) {
       return res.status(504).json({
         error: "Upstream service timed out. Please try again shortly.",
       });
     }
 
-    // Tavily / Gemini HTTP errors or JSON parse failures → 502 / 500
-    if (message.includes("Tavily API returned") || message.includes("Tavily request failed")) {
+    if (
+      message.includes("Tavily API returned") ||
+      message.includes("Tavily request failed")
+    ) {
       return res.status(502).json({ error: "Tavily search failed: " + message });
     }
 
-    if (message.includes("non-JSON output") || message.includes("missing required fields")) {
+    if (
+      message.includes("non-JSON output") ||
+      message.includes("missing required fields")
+    ) {
       return res.status(502).json({
         error: "AI model returned an unexpected response: " + message,
       });
     }
 
-    // Generic fallback – never let the server crash silently.
     return res.status(500).json({ error: "Internal server error: " + message });
   }
 });

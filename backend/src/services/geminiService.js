@@ -1,14 +1,19 @@
 /**
  * geminiService.js
  *
- * Exports generateReport(brandName, description, budget).
+ * Exports two functions:
  *
- * Flow:
- *  1. Validate env keys up-front so failures are obvious.
- *  2. Call Tavily Search API to pull competitor/trend context.
- *  3. Build a Gemini prompt that includes that context.
- *  4. Parse the raw model output as JSON, validate the top-level schema.
- *  5. Return the structured report object.
+ *  1. analyzeForFrontend(profile) — NEW
+ *     Called by POST /api/analyze-brand.
+ *     Uses Gemini with JSON mode to return a schema that matches the frontend
+ *     component structure exactly. No Tavily — Gemini's general knowledge is
+ *     sufficient for MVP brand strategy generation.
+ *
+ *  2. generateReport(brandName, description, budget) — LEGACY
+ *     Called by POST /api/generate-report.
+ *     Fetches live web context via Tavily, then asks Gemini for the richer
+ *     report schema (platforms, seasonality, competitors, etc.).
+ *     Kept for backward compatibility.
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -19,10 +24,10 @@ import fetch from "node-fetch";
 // ---------------------------------------------------------------------------
 const TAVILY_API_URL = "https://api.tavily.com/search";
 const TAVILY_TIMEOUT_MS = 15_000;
-const GEMINI_TIMEOUT_MS = 30_000;
+const GEMINI_TIMEOUT_MS = 45_000;
 
-// The exact top-level keys that must be present in the model's JSON output.
-const REQUIRED_KEYS = [
+// Top-level keys required by the legacy generateReport schema.
+const LEGACY_REQUIRED_KEYS = [
   "brand",
   "platforms",
   "seasonality",
@@ -35,7 +40,7 @@ const REQUIRED_KEYS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Helper: abort-controlled fetch with a timeout
+// Shared helper: abort-controlled fetch with timeout
 // ---------------------------------------------------------------------------
 async function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
@@ -54,8 +59,197 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 1 – Tavily search
+// Shared helper: get a Gemini model instance
 // ---------------------------------------------------------------------------
+function getGeminiModel(generationConfig = {}) {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (!geminiKey) {
+    throw new Error(
+      "GEMINI_API_KEY is not set. Add it to your .env file (see .env.example)."
+    );
+  }
+  const genAI = new GoogleGenerativeAI(geminiKey);
+  return genAI.getGenerativeModel({
+    model: "gemini-2.0-flash-lite",
+    generationConfig,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// ─── NEW: analyzeForFrontend ─────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+
+/**
+ * Frontend-compatible schema that Gemini must return.
+ * Mirrors the TypeScript interfaces in src/lib/mock-data.ts exactly.
+ */
+const FRONTEND_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    reportTitle: { type: "string" },
+    reportDate: { type: "string" },
+    channels: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          fit: { type: "number" },
+          allocation: { type: "string" },
+          reason: { type: "string" },
+        },
+        required: ["name", "fit", "allocation", "reason"],
+      },
+    },
+    creators: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          initials: { type: "string" },
+          name: { type: "string" },
+          niche: { type: "string" },
+          audience: { type: "string" },
+          match: { type: "number" },
+        },
+        required: ["initials", "name", "niche", "audience", "match"],
+      },
+    },
+    confidenceScore: { type: "number" },
+    executiveRecommendation: {
+      type: "object",
+      properties: {
+        headline: { type: "string" },
+        body: { type: "string" },
+      },
+      required: ["headline", "body"],
+    },
+    first30Days: {
+      type: "array",
+      items: { type: "string" },
+    },
+  },
+  required: [
+    "reportTitle",
+    "reportDate",
+    "channels",
+    "creators",
+    "confidenceScore",
+    "executiveRecommendation",
+    "first30Days",
+  ],
+};
+
+/**
+ * Builds the prompt for the /api/analyze-brand endpoint.
+ */
+function buildFrontendPrompt({ brand_name, sell_type, description, ideal_customer, monthly_budget }) {
+  return `You are an expert digital advertising strategist specializing in helping small and medium businesses build effective ad strategies.
+
+Analyze the following brand and generate a practical, actionable advertising strategy report.
+
+BRAND INFORMATION:
+- Brand Name: ${brand_name}
+- What they sell: ${sell_type}
+- Description: ${description}
+- Ideal Customer: ${ideal_customer}
+- Monthly Ad Budget: ${monthly_budget}
+
+Generate a comprehensive strategy report with the following structure:
+
+1. **reportTitle**: A concise, descriptive title for this strategy report (e.g. "${brand_name} Launch Strategy")
+
+2. **reportDate**: Today's date as a readable string (e.g. "August 7, 2026")
+
+3. **channels**: 3–4 recommended advertising channels/platforms, ordered by priority. For each:
+   - name: Platform name (e.g. "Instagram", "TikTok", "Google Search", "YouTube")
+   - fit: A percentage 0–100 representing how well this platform fits this brand
+   - allocation: Recommended budget percentage as a string (e.g. "45%"). All allocations must sum to 100%.
+   - reason: 1–2 sentence explanation tailored specifically to this brand's product, audience, and budget
+
+4. **creators**: 3 archetypal creator/influencer types (NOT real people — generate realistic archetypes that would suit this brand). For each:
+   - initials: 2-letter initials based on the archetype name you create
+   - name: A plausible creator archetype name (e.g. "Priya Sharma", "Alex Chen")
+   - niche: Their content niche (e.g. "Sustainable fashion · GRWM")
+   - audience: Typical follower count range (e.g. "84K", "210K")
+   - match: A percentage 0–100 representing relevance to this brand
+
+5. **confidenceScore**: An overall strategy confidence score 0–100, based on how well we can predict success given the product type, audience clarity, and budget. Be realistic.
+
+6. **executiveRecommendation**:
+   - headline: A single bold, memorable strategic direction sentence
+   - body: 2–3 sentences explaining the strategic rationale, referencing the specific product, target audience, and budget
+
+7. **first30Days**: Exactly 4 ordered action strings — specific, practical tasks for the first 30 days of launching this strategy. Each should be a complete sentence.
+
+Make all recommendations specific to this brand — avoid generic advice. Consider the budget, product type, and target audience in every recommendation.`;
+}
+
+/**
+ * analyzeForFrontend — calls Gemini with JSON mode and returns a response
+ * that matches the frontend's rendering schema exactly.
+ *
+ * @param {object} profile  { brand_name, sell_type, description, ideal_customer, monthly_budget }
+ * @returns {Promise<object>}  Validated report matching the frontend schema
+ */
+export async function analyzeForFrontend(profile) {
+  const model = getGeminiModel({
+    responseMimeType: "application/json",
+    responseSchema: FRONTEND_RESPONSE_SCHEMA,
+  });
+
+  const prompt = buildFrontendPrompt(profile);
+
+  // Race the Gemini call against a timeout
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(
+      () => reject(new Error(`Gemini request timed out after ${GEMINI_TIMEOUT_MS}ms`)),
+      GEMINI_TIMEOUT_MS
+    )
+  );
+
+  let rawText;
+  try {
+    const result = await Promise.race([
+      model.generateContent(prompt),
+      timeoutPromise,
+    ]);
+    rawText = result.response.text();
+  } catch (err) {
+    // Re-classify quota errors for clearer messaging
+    const msg = err?.message ?? "";
+    if (msg.includes("429") || msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("rate limit")) {
+      throw new Error(
+        "Gemini API quota exceeded. Please wait a minute and try again, or check your API plan."
+      );
+    }
+    throw err;
+  }
+
+  // With JSON mode, the SDK guarantees valid JSON — but parse defensively anyway
+  let parsed;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    throw new Error(
+      `Gemini returned non-JSON despite JSON mode. First 300 chars: ${rawText.slice(0, 300)}`
+    );
+  }
+
+  // Stamp the server's real date — never trust the model's date
+  parsed.reportDate = new Date().toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  return parsed;
+}
+
+// ---------------------------------------------------------------------------
+// ─── LEGACY: generateReport (uses Tavily + richer schema) ────────────────────
+// ---------------------------------------------------------------------------
+
 async function fetchTavilyContext(brandName, description) {
   const tavilyKey = process.env.TAVILY_API_KEY;
   if (!tavilyKey) {
@@ -100,7 +294,6 @@ async function fetchTavilyContext(brandName, description) {
 
   const data = await res.json();
 
-  // Collect the top result snippets as context paragraphs.
   const snippets = (data.results || [])
     .map((r) => `Source: ${r.url}\n${r.content}`)
     .join("\n\n");
@@ -110,22 +303,9 @@ async function fetchTavilyContext(brandName, description) {
   return `${answer}${snippets}`.trim() || "No external context available.";
 }
 
-// ---------------------------------------------------------------------------
-// Step 2 – Gemini call with timeout
-// ---------------------------------------------------------------------------
-async function callGemini(prompt) {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (!geminiKey) {
-    throw new Error(
-      "GEMINI_API_KEY is not set. Add it to your .env file (see .env.example)."
-    );
-  }
+async function callGeminiLegacy(prompt) {
+  const model = getGeminiModel();
 
-  const genAI = new GoogleGenerativeAI(geminiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
-
-  // Wrap the SDK call in a manual timeout race because the SDK does not expose
-  // a built-in AbortSignal option in all versions.
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(
       () => reject(new Error(`Gemini request timed out after ${GEMINI_TIMEOUT_MS}ms`)),
@@ -141,11 +321,7 @@ async function callGemini(prompt) {
   return result.response.text();
 }
 
-// ---------------------------------------------------------------------------
-// Step 3 – Parse & validate the model's JSON
-// ---------------------------------------------------------------------------
-function parseAndValidate(rawText) {
-  // Strip accidental markdown fences the model might emit despite instructions.
+function parseAndValidateLegacy(rawText) {
   const cleaned = rawText
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/```\s*$/i, "")
@@ -160,8 +336,7 @@ function parseAndValidate(rawText) {
     );
   }
 
-  // Validate top-level keys.
-  const missing = REQUIRED_KEYS.filter((k) => !(k in parsed));
+  const missing = LEGACY_REQUIRED_KEYS.filter((k) => !(k in parsed));
   if (missing.length > 0) {
     throw new Error(
       `Model JSON is missing required fields: ${missing.join(", ")}`
@@ -171,10 +346,7 @@ function parseAndValidate(rawText) {
   return parsed;
 }
 
-// ---------------------------------------------------------------------------
-// Step 4 – Build Gemini prompt
-// ---------------------------------------------------------------------------
-function buildPrompt(brandName, description, budget, webContext) {
+function buildLegacyPrompt(brandName, description, budget, webContext) {
   return `You are an expert digital advertising strategist. Analyze the brand below and produce a comprehensive ad-strategy report.
 
 BRAND INFORMATION:
@@ -200,7 +372,7 @@ The JSON must match this exact schema (all fields required):
       "name": "string – platform name (e.g. Instagram, TikTok, Google Ads)",
       "icon": "string – a single relevant emoji for the platform",
       "reason": "string – 1-2 sentence rationale",
-      "confidence": "string – must be exactly \"High\" or \"Medium\" (no other values)",
+      "confidence": "string – must be exactly \"High\" or \"Medium\" (no other values)"
     }
   ],
   "seasonality": {
@@ -256,12 +428,9 @@ Important constraints:
 Now produce the JSON report:`;
 }
 
-// ---------------------------------------------------------------------------
-// Public export
-// ---------------------------------------------------------------------------
 /**
- * generateReport – fetches live web context via Tavily, then asks Gemini to
- * produce a structured ad-strategy JSON report for the given brand.
+ * generateReport — LEGACY. Fetches live web context via Tavily, then asks
+ * Gemini to produce the richer ad-strategy JSON report.
  *
  * @param {string} brandName
  * @param {string} description
@@ -269,22 +438,10 @@ Now produce the JSON report:`;
  * @returns {Promise<object>}     Validated report object
  */
 export async function generateReport(brandName, description, budget) {
-  // 1. Fetch live web context (fail loudly so the caller can handle it)
   const webContext = await fetchTavilyContext(brandName, description);
-
-  // 2. Build the prompt
-  const prompt = buildPrompt(brandName, description, Number(budget), webContext);
-
-  // 3. Call Gemini
-  const rawText = await callGemini(prompt);
-
-  // 4. Parse & validate
-  const report = parseAndValidate(rawText);
-
-  // 5. Override generatedAt with the real server timestamp.
-  //    LLMs have no real clock — they confabulate plausible-looking but wrong
-  //    dates. Never trust the model's value; always use the server clock.
+  const prompt = buildLegacyPrompt(brandName, description, Number(budget), webContext);
+  const rawText = await callGeminiLegacy(prompt);
+  const report = parseAndValidateLegacy(rawText);
   report.generatedAt = new Date().toISOString();
-
   return report;
 }
