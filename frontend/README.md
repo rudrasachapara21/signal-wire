@@ -1,16 +1,60 @@
-# React + Vite
+# Signal Wire — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + Vite + TanStack Router frontend for [Signal Wire](https://github.com/rudrasachapara21/signal-wire), an AI-powered ad-strategy advisor.
 
-Currently, two official plugins are available:
+## Tech stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **React 19** + **TypeScript**
+- **Vite 8** + **TanStack Start** (SSR via Nitro/Cloudflare)
+- **TanStack Router** (file-based routing, auto-generated route tree)
+- **Tailwind CSS v4** + **shadcn/ui** component library
+- **react-hook-form** + **zod** for form validation
+- **IBM Plex Sans** (body) + **Libre Baskerville** (headings) — core visual signature
 
-## React Compiler
+## App structure
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```
+src/
+├── context/AuthContext.tsx     ← Auth state + pendingAction pattern
+├── hooks/useRequireAuth.ts     ← guard() helper for action-gated auth
+├── lib/mock-data.ts            ← Typed mock data (replace with API calls)
+├── components/layout/          ← AppLayout, Sidebar, Header
+├── pages/                      ← Overview, BrandProfile, StrategyReport, PastReports
+│   └── auth/                   ← Login, Signup
+└── routes/                     ← TanStack Router file-based routes
+```
 
-## Expanding the Oxlint configuration
+## Environment variables
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Copy `.env.example` to `.env` and fill in the values:
+
+```sh
+cp .env.example .env
+```
+
+See `.env.example` for required variables. Vite exposes only `VITE_`-prefixed variables to the client bundle — never put raw API keys or secrets in this file without that prefix check.
+
+## Development
+
+You need Node.js 18+ and npm.
+
+```sh
+cd signal-wire-frontend
+npm install
+npm run dev
+```
+
+App runs at `http://localhost:3000` (or next available port).
+
+## Build
+
+```sh
+npm run build      # production build (Nitro/Cloudflare target)
+npm run preview    # preview the production build locally
+```
+
+## Backend
+
+The backend lives in the parent [`signal-wire`](https://github.com/rudrasachapara21/signal-wire) repo. Auth functions in `src/context/AuthContext.tsx` are currently mocked — search for `// TODO: replace with real API call to backend auth endpoint` to find the swap points.
+
+This project was originally built with [Lovable](https://lovable.dev).
