@@ -23,15 +23,30 @@ import cors from "cors";
 import reportRouter from "./routes/report.js";
 
 // ---------------------------------------------------------------------------
-// Validate critical env keys at startup so failures are obvious immediately.
+// Validate env keys at startup so failures are obvious immediately.
+// GEMINI_API_KEY is required (final fallback). GROQ + OPENROUTER are optional
+// but strongly recommended — without them Gemini's rate limits will bite you.
 // ---------------------------------------------------------------------------
 const REQUIRED_ENV = ["GEMINI_API_KEY"];
+const OPTIONAL_ENV = ["GROQ_API_KEY", "OPENROUTER_API_KEY"];
+
 const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
 if (missing.length > 0) {
   console.warn(
-    `[startup] WARNING: The following environment variables are not set: ${missing.join(", ")}.\n` +
+    `[startup] WARNING: Required env vars not set: ${missing.join(", ")}.\n` +
       `  Copy .env.example to .env and fill in the real values.\n` +
       `  The server will start, but /api/analyze-brand will return 503 until they are set.`
+  );
+}
+
+const missingOptional = OPTIONAL_ENV.filter(
+  (k) => !process.env[k] || process.env[k] === "your_key_here"
+);
+if (missingOptional.length > 0) {
+  console.warn(
+    `[startup] INFO: Optional provider keys not set: ${missingOptional.join(", ")}.\n` +
+      `  Without them, /api/analyze-brand will only use Gemini (tight rate limits).\n` +
+      `  Get free keys at https://console.groq.com and https://openrouter.ai`
   );
 }
 

@@ -64,14 +64,25 @@ router.post("/analyze-brand", async (req, res) => {
     const message = err?.message ?? "Unknown error";
     console.error("[POST /api/analyze-brand] Error:", message);
 
-    // Missing API key → 503
-    if (message.includes("GEMINI_API_KEY is not set")) {
+    // All providers exhausted → 503
+    if (message.startsWith("ALL_PROVIDERS_FAILED:")) {
       return res.status(503).json({
-        error: "Service not configured: Gemini API key is missing.",
+        error:
+          "All AI providers are currently unavailable. Please try again in a few minutes.",
       });
     }
 
-    // Quota / rate limit → 429
+    // Missing API key → 503
+    if (
+      message.includes("_API_KEY is not set") ||
+      message.includes("is a placeholder")
+    ) {
+      return res.status(503).json({
+        error: "Service not configured: an AI provider API key is missing.",
+      });
+    }
+
+    // Quota / rate limit → 429 (single-provider, shouldn't reach here normally)
     if (
       message.includes("quota exceeded") ||
       message.toLowerCase().includes("rate limit")
@@ -87,7 +98,7 @@ router.post("/analyze-brand", async (req, res) => {
     }
 
     // Non-JSON model output → 502
-    if (message.includes("non-JSON")) {
+    if (message.includes("non-JSON") || message.includes("missing required fields")) {
       return res.status(502).json({
         error: "AI model returned an unexpected response. Please try again.",
       });
