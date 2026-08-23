@@ -1,0 +1,36 @@
+// Prisma v5 schema — standard format, datasource URL in this file (not a separate config)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  reports      Report[]
+}
+
+model Report {
+  id            String    @id @default(cuid())
+  userId        String
+  brandName     String
+  reportData    String              // Full StrategyReportResponse serialised as JSON
+  brandProfile  String?             // Original brand profile form inputs as JSON
+  refinedFromId String?             // If this is a refinement, points to the parent Report id
+  rating        String?             // "up" | "down" | null — user feedback
+  feedbackNote  String?             // Optional free text, meaningful when rating is "down"
+  ratedAt       DateTime?           // When feedback was last given / changed
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refinedFrom   Report?   @relation("RefinementChain", fields: [refinedFromId], references: [id])
+  refinements   Report[]  @relation("RefinementChain")
+}
