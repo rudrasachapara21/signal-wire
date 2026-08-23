@@ -1,14 +1,187 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AlertCircle, RefreshCw, Sparkles } from "lucide-react";
+import { AlertCircle, RefreshCw, Sparkles, Mic, MicOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useReport } from "@/context/ReportContext";
 import { Button } from "@/components/ui/button";
-import { analyzeBrand } from "@/lib/api";
+import { analyzeBrand, ClarificationError } from "@/lib/api";
 import { defaultBrandProfile } from "@/lib/mock-data";
+
+const API_BASE_URL = import.meta.env["VITE_API_BASE_URL"] || "http://localhost:5001";
+
+// ─── Speech input hook ────────────────────────────────────────────────────────
+
+type SpeechState = "idle" | "recording" | "processing" | "error";
+
+function useSpeechInput(onText: (text: string) => void) {
+  const [speechState, setSpeechState] = useState<SpeechState>("idle");
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+
+  const startRecording = useCallback(async () => {
+    setSpeechError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Pick the best available mimetype
+      const mimeType = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/ogg;codecs=opus",
+        "audio/ogg",
+        "",
+      ].find((t) => !t || MediaRecorder.isTypeSupported(t)) ?? "";
+
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        // Stop all tracks to release mic
+        stream.getTracks().forEach((t) => t.stop());
+
+        setSpeechState("processing");
+        const blob = new Blob(chunksRef.current, {
+          type: mimeType || "audio/webm",
+        });
+
+        const formData = new FormData();
+        formData.append("audio", blob, "recording.webm");
+
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/speech-to-text`, {
+            method: "POST",
+            body: formData,
+          });
+
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
+          if (!data.text) throw new Error("Empty transcription returned.");
+
+          onText(data.text);
+          setSpeechState("idle");
+        } catch (err: any) {
+          setSpeechError(err.message || "Transcription failed.");
+          setSpeechState("error");
+        }
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setSpeechState("recording");
+    } catch (err: any) {
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        setSpeechError(
+          "Microphone access denied. Please allow mic access in your browser settings and try again."
+        );
+      } else {
+        setSpeechError(err.message || "Could not access microphone.");
+      }
+      setSpeechState("error");
+    }
+  }, [onText]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
+
+  return { speechState, speechError, startRecording, stopRecording, setSpeechError };
+}
+
+// ─── Mic button component ──────────────────────────────────────────────────────
+
+function MicButton({
+  speechState,
+  speechError,
+  startRecording,
+  stopRecording,
+  setSpeechError,
+}: {
+  speechState: SpeechState;
+  speechError: string | null;
+  startRecording: () => Promise<void>;
+  stopRecording: () => void;
+  setSpeechError: (e: string | null) => void;
+}) {
+  const isRecording = speechState === "recording";
+  const isProcessing = speechState === "processing";
+  const isDisabled = isProcessing;
+
+  function handleClick() {
+    if (isRecording) {
+      stopRecording();
+    } else if (!isDisabled) {
+      setSpeechError(null);
+      void startRecording();
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        id="mic-button"
+        onClick={handleClick}
+        disabled={isDisabled}
+        title={
+          isRecording
+            ? "Stop recording"
+            : isProcessing
+              ? "Transcribing…"
+              : "Record voice input"
+        }
+        className={[
+          "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-all",
+          isRecording
+            ? "border-red-500 bg-red-500/10 text-red-500 hover:bg-red-500/20"
+            : isProcessing
+              ? "cursor-not-allowed border-muted-foreground/30 bg-muted text-muted-foreground"
+              : "border-border bg-background text-muted-foreground hover:border-primary hover:text-primary",
+        ].join(" ")}
+      >
+        {/* Pulsing ring while recording */}
+        {isRecording && (
+          <span className="absolute inset-0 animate-ping rounded-lg bg-red-500/30" />
+        )}
+
+        {isProcessing ? (
+          <Loader2 size={16} className="animate-spin" />
+        ) : isRecording ? (
+          <MicOff size={16} />
+        ) : (
+          <Mic size={16} />
+        )}
+      </button>
+
+      {/* Status label below button */}
+      <span className="text-[10px] leading-none text-muted-foreground">
+        {isRecording ? (
+          <span className="text-red-500">● REC</span>
+        ) : isProcessing ? (
+          "transcribing…"
+        ) : (
+          "voice"
+        )}
+      </span>
+
+      {/* Error tooltip */}
+      {speechError && (
+        <p className="absolute right-0 top-full z-10 mt-1 w-64 rounded-md border border-destructive/30 bg-card p-2 text-xs text-destructive shadow-md">
+          {speechError}
+        </p>
+      )}
+    </div>
+  );
+}
 
 // ─── Validation schema ────────────────────────────────────────────────────────
 
@@ -69,11 +242,16 @@ export function BrandProfile() {
   const navigate = useNavigate();
   const [analyzing, setAnalyzing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [clarification, setClarification] = useState<{
+    issue: string;
+    suggestion: string | null;
+  } | null>(null);
 
   const {
     register,
     handleSubmit,
     getValues,
+    setValue,
     formState: { errors },
   } = useForm<BrandProfileFormValues>({
     resolver: zodResolver(brandProfileSchema),
@@ -86,20 +264,53 @@ export function BrandProfile() {
     },
   });
 
+  // ── Voice input ─────────────────────────────────────────────────────────────
+  const handleSpeechText = useCallback(
+    (text: string) => {
+      const current = getValues("description");
+      const joined = current ? `${current.trimEnd()} ${text}` : text;
+      setValue("description", joined, { shouldValidate: true, shouldDirty: true });
+    },
+    [getValues, setValue]
+  );
+
+  const { speechState, speechError, startRecording, stopRecording, setSpeechError } =
+    useSpeechInput(handleSpeechText);
+
   async function executeAnalysis(values: BrandProfileFormValues) {
     setAnalyzing(true);
     setErrorMessage(null);
+    setClarification(null);
 
     try {
       const generatedReport = await analyzeBrand(values);
-      setReport(generatedReport);
+      const brandProfile = {
+        brand_name: values.brandName,
+        sell_type: values.productType,
+        description: values.description,
+        ideal_customer: values.idealCustomer,
+        monthly_budget: values.monthlyBudget,
+      };
+      setReport(generatedReport, user?.id, brandProfile);
       setAnalyzing(false);
       void navigate({ to: "/strategy-report" });
     } catch (err: any) {
       setAnalyzing(false);
-      setErrorMessage(
-        err.message || "Failed to connect to backend server. Please check that the server is running."
-      );
+      if (err instanceof ClarificationError) {
+        setClarification({
+          issue: err.issue,
+          suggestion: err.suggestion,
+        });
+      } else {
+        const msg = err?.message || "";
+        if (msg.includes("too often") || msg.includes("rate_limited") || msg.includes("wait a few minutes")) {
+          setErrorMessage("You've hit the limit for now — please wait a few minutes and try again.");
+        } else {
+          setErrorMessage(
+            err.message || "Failed to connect to backend server. Please check that the server is running."
+          );
+        }
+      }
     }
   }
 
@@ -126,6 +337,28 @@ export function BrandProfile() {
         Plain language is perfect. Signal Wire uses these details to find the
         right advertising channels, content formats, and creator types.
       </p>
+
+      {clarification && (
+        <div
+          id="input-clarification-banner"
+          className="mt-6 max-w-3xl rounded-xl border border-amber-500/40 bg-amber-500/10 p-5 text-amber-950 dark:text-amber-100"
+        >
+          <div className="flex items-start gap-3">
+            <Sparkles className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="space-y-1 text-sm">
+              <p className="font-semibold text-amber-900 dark:text-amber-200">
+                Before we generate your strategy, quick check:
+              </p>
+              <p className="leading-relaxed opacity-90">{clarification.issue}</p>
+              {clarification.suggestion && (
+                <p className="mt-2 text-xs font-medium text-amber-800 dark:text-amber-300">
+                  💡 Suggestion: {clarification.suggestion}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {errorMessage && (
         <div className="mt-6 max-w-3xl rounded-lg border border-destructive/30 bg-destructive/10 p-5 text-destructive">
@@ -203,12 +436,23 @@ export function BrandProfile() {
 
           {/* Description */}
           <div className="mt-5">
-            <label
-              htmlFor="description"
-              className="block text-sm font-medium text-foreground"
-            >
-              Describe your brand and product
-            </label>
+            <div className="flex items-center justify-between">
+              <label
+                htmlFor="description"
+                className="block text-sm font-medium text-foreground"
+              >
+                Describe your brand and product
+              </label>
+              <div className="relative">
+                <MicButton
+                  speechState={speechState}
+                  speechError={speechError}
+                  startRecording={startRecording}
+                  stopRecording={stopRecording}
+                  setSpeechError={setSpeechError}
+                />
+              </div>
+            </div>
             <textarea
               id="description"
               {...register("description")}

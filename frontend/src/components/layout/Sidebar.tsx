@@ -123,8 +123,7 @@ function SidebarContent({ onClose }: SidebarContentProps) {
           <Button
             variant="ghost"
             onClick={() => {
-              logout();
-              onClose?.();
+              void logout().then(() => onClose?.());
             }}
             className="h-10 w-full justify-start px-3 text-sm font-medium text-sidebar-foreground hover:text-destructive"
           >

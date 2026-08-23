@@ -3,12 +3,14 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
   type ReactNode,
 } from "react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface AuthUser {
+  id: string;
   name: string;
   email: string;
   initials: string;
@@ -19,7 +21,7 @@ interface AuthContextValue {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   /**
    * requireAuth — gate an action behind authentication.
    *
@@ -35,63 +37,47 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// ─── Mock API helpers ────────────────────────────────────────────────────────
+const API_BASE = import.meta.env["VITE_API_BASE_URL"] ?? "http://localhost:5001";
 
-function deriveInitials(name: string): string {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
+// ─── API helpers ─────────────────────────────────────────────────────────────
 
-/**
- * TODO: replace with real API call to backend auth endpoint.
- * POST /api/auth/login  { email, password }
- * Returns: { user: { name, email } }
- */
-async function mockLoginApi(
-  email: string,
-  _password: string,
-): Promise<AuthUser> {
-  await new Promise((resolve) => setTimeout(resolve, 800));
-  // Derive a display name from the email address for demo purposes
-  const namePart = email.split("@")[0] ?? "User";
-  const name = namePart
-    .replace(/[._-]/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-  return { name, email, initials: deriveInitials(name) };
-}
-
-/**
- * TODO: replace with real API call to backend auth endpoint.
- * POST /api/auth/signup  { name, email, password }
- * Returns: { user: { name, email } }
- */
-async function mockSignupApi(
-  name: string,
-  email: string,
-  _password: string,
-): Promise<AuthUser> {
-  await new Promise((resolve) => setTimeout(resolve, 800));
-  return { name, email, initials: deriveInitials(name) };
+async function apiFetch(path: string, init?: RequestInit) {
+  const res = await fetch(`${API_BASE}/api${path}`, {
+    ...init,
+    credentials: "include", // always send/receive the httpOnly sid cookie
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return data as { user: AuthUser };
 }
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // true while checking session on mount
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
+  // ── Session restore on mount ───────────────────────────────────────────────
+  // Call GET /api/auth/me to restore the session from the httpOnly cookie.
+  // This means refreshing the page keeps the user logged in.
+  useEffect(() => {
+    apiFetch("/auth/me")
+      .then(({ user: me }) => setUser(me))
+      .catch(() => setUser(null)) // 401 = no session, not an error
+      .finally(() => setIsLoading(false));
+  }, []);
 
   const runPendingAction = useCallback(
     (currentPending: (() => void) | null) => {
       if (currentPending) {
-        // Small tick to allow state updates to flush before the action runs
-        setTimeout(() => {
-          currentPending();
-        }, 0);
+        setTimeout(() => { currentPending(); }, 0);
         setPendingAction(null);
       }
     },
@@ -102,8 +88,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string) => {
       setIsLoading(true);
       try {
-        const loggedInUser = await mockLoginApi(email, password);
-        setUser(loggedInUser);
+        const { user: loggedIn } = await apiFetch("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        });
+        setUser(loggedIn);
         runPendingAction(pendingAction);
       } finally {
         setIsLoading(false);
@@ -116,8 +105,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (name: string, email: string, password: string) => {
       setIsLoading(true);
       try {
-        const newUser = await mockSignupApi(name, email, password);
-        setUser(newUser);
+        const { user: created } = await apiFetch("/auth/signup", {
+          method: "POST",
+          body: JSON.stringify({ name, email, password }),
+        });
+        setUser(created);
         runPendingAction(pendingAction);
       } finally {
         setIsLoading(false);
@@ -126,7 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [pendingAction, runPendingAction],
   );
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    await apiFetch("/auth/logout", { method: "POST" }).catch(() => {});
     setUser(null);
     setPendingAction(null);
   }, []);
