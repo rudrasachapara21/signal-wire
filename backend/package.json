@@ -6,15 +6,26 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "start": "node --env-file=../.env src/index.js",
+    "dev": "node --env-file=../.env --watch src/index.js",
+    "prisma:studio": "DATABASE_URL=\"file:/Users/rudrasachapara/Desktop/signal-wire/backend/prisma/dev.db\" prisma studio --schema=./prisma/schema.prisma",
+    "prisma:migrate": "DATABASE_URL=\"file:/Users/rudrasachapara/Desktop/signal-wire/backend/prisma/dev.db\" prisma migrate dev --schema=./prisma/schema.prisma"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
+    "@prisma/client": "5.22.0",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "node-fetch": "^3.3.2"
+    "express-rate-limit": "^8.6.2",
+    "form-data": "^4.0.6",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.2.0",
+    "node-fetch": "^3.3.2",
+    "prisma": "5.22.0",
+    "zod": "^3.25.76"
   },
   "engines": {
     "node": ">=18.0.0"

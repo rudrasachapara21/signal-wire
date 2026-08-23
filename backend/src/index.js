@@ -10,17 +10,19 @@
  *  - Listens on PORT (default 5001)
  */
 
-import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
-dotenv.config();
 
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import reportRouter from "./routes/report.js";
+import speechRouter from "./routes/speech.js";
+import authRouter from "./routes/auth.js";
+import reportsRouter from "./routes/reports.js";
+import { generalApiLimiter } from "./middleware/rateLimiters.js";
 
 // ---------------------------------------------------------------------------
 // Validate env keys at startup so failures are obvious immediately.
@@ -28,7 +30,16 @@ import reportRouter from "./routes/report.js";
 // but strongly recommended — without them Gemini's rate limits will bite you.
 // ---------------------------------------------------------------------------
 const REQUIRED_ENV = ["GEMINI_API_KEY"];
-const OPTIONAL_ENV = ["GROQ_API_KEY", "OPENROUTER_API_KEY"];
+const OPTIONAL_ENV = ["GROQ_API_KEY", "OPENROUTER_API_KEY", "TAVILY_API_KEY", "JWT_SECRET"];
+
+const missingJwt = !process.env.JWT_SECRET;
+if (missingJwt) {
+  console.warn(
+    `[startup] WARNING: JWT_SECRET is not set.\n` +
+      `  Auth routes will fail until it is configured.\n` +
+      `  Set a long random string: JWT_SECRET=your-super-secret-here`
+  );
+}
 
 const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
 if (missing.length > 0) {
@@ -81,19 +92,18 @@ app.use(
     },
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true, // Required for httpOnly cookie exchange
   })
 );
 
 // Parse JSON bodies up to 1 MB.
 app.use(express.json({ limit: "1mb" }));
 
-// ---------------------------------------------------------------------------
-// Routes
-// ---------------------------------------------------------------------------
-app.use("/api", reportRouter);
+// Parse cookies (required for JWT session cookie)
+app.use(cookieParser());
 
 // Health-check at /api/health (frontend-compatible path) and root /health
-// for deployment probes without touching the AI services.
+// for deployment probes without touching rate limiters or AI services.
 function healthHandler(_req, res) {
   res.json({
     status: "ok",
@@ -105,6 +115,17 @@ function healthHandler(_req, res) {
 
 app.get("/api/health", healthHandler);
 app.get("/health", healthHandler);
+
+// Apply general API rate limiter to all other /api routes
+app.use("/api", generalApiLimiter);
+
+// ---------------------------------------------------------------------------
+// Routes
+// ---------------------------------------------------------------------------
+app.use("/api", authRouter);
+app.use("/api", reportsRouter);
+app.use("/api", reportRouter);
+app.use("/api", speechRouter);
 
 // 404 catch-all for unknown routes.
 app.use((_req, res) => {
@@ -129,8 +150,13 @@ const PORT = Number(process.env.PORT ?? 5001);
 
 const server = app.listen(PORT, () => {
   console.log(`✅  Signal Wire backend listening on http://localhost:${PORT}`);
+  console.log(`   POST http://localhost:${PORT}/api/auth/signup`);
+  console.log(`   POST http://localhost:${PORT}/api/auth/login`);
+  console.log(`   GET  http://localhost:${PORT}/api/auth/me`);
+  console.log(`   POST http://localhost:${PORT}/api/reports`);
+  console.log(`   GET  http://localhost:${PORT}/api/reports`);
   console.log(`   POST http://localhost:${PORT}/api/analyze-brand`);
-  console.log(`   POST http://localhost:${PORT}/api/generate-report`);
+  console.log(`   POST http://localhost:${PORT}/api/speech-to-text`);
   console.log(`   GET  http://localhost:${PORT}/api/health`);
 });
 

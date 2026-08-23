@@ -1,6 +1,8 @@
 # Environment / secrets
 .env
 .env.local
+*.db
+*.db-journal
 
 # Dependencies
 node_modules/

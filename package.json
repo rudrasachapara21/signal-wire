@@ -14,5 +14,11 @@
   "resolutions": {
     "@tanstack/router-core": "1.171.18",
     "@tanstack/start-plugin-core": "1.171.29"
+  },
+  "allowScripts": {
+    "prisma": true,
+    "@prisma/client": true,
+    "@prisma/engines": true,
+    "fsevents": true
   }
 }
