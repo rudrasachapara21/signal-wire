@@ -2,7 +2,7 @@
  * groqProvider.js
  *
  * Calls the Groq Chat Completions API (OpenAI-compatible).
- * Model: llama-3.3-70b-versatile — verified live on Groq's model list Aug 2026.
+ * Model: openai/gpt-oss-120b — verified live on Groq's model list.
  * Rate limits: ~30 RPM / 14,400 RPD on the free tier (far more generous than Gemini).
  *
  * Interface: async generateStrategy(promptText) => raw JSON string
@@ -11,7 +11,7 @@
 import fetch from "node-fetch";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = "llama-3.3-70b-versatile";
+const GROQ_MODEL = "openai/gpt-oss-120b";
 const GROQ_TIMEOUT_MS = 30_000;
 
 /**
