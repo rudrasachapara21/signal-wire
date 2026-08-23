@@ -14,6 +14,8 @@
 
 import { Router } from "express";
 import { analyzeForFrontend, generateReport } from "../services/geminiService.js";
+import { validateBrandInput } from "../services/inputValidator.js";
+import { expensiveOperationLimiter } from "../middleware/rateLimiters.js";
 
 const router = Router();
 
@@ -21,7 +23,7 @@ const router = Router();
 // POST /api/analyze-brand — Frontend-facing endpoint
 // ---------------------------------------------------------------------------
 
-router.post("/analyze-brand", async (req, res) => {
+router.post("/analyze-brand", expensiveOperationLimiter, async (req, res) => {
   const { brand_name, sell_type, description, ideal_customer, monthly_budget } =
     req.body ?? {};
 
@@ -56,6 +58,21 @@ router.post("/analyze-brand", async (req, res) => {
     ideal_customer: ideal_customer.trim(),
     monthly_budget: monthly_budget.trim(),
   };
+
+  // ── Input Sanity Check ────────────────────────────────────────────────────
+  try {
+    const inputCheck = await validateBrandInput(profile);
+    if (!inputCheck.isValid) {
+      console.warn(`[POST /api/analyze-brand] Input flagged as invalid: ${inputCheck.issue}`);
+      return res.status(422).json({
+        error: "input_needs_clarification",
+        issue: inputCheck.issue,
+        suggestion: inputCheck.suggestedClarification,
+      });
+    }
+  } catch (err) {
+    console.warn(`[POST /api/analyze-brand] Sanity check error, proceeding: ${err.message}`);
+  }
 
   try {
     const report = await analyzeForFrontend(profile);
