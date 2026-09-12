@@ -33,6 +33,7 @@ export const creatorSchema = z.object({
   audience: z.string().nullable(),
   match: z.number({ invalid_type_error: "match must be a number" }).min(0, "match score must be >= 0").max(100, "match score must be <= 100"),
   verified: z.boolean().default(false),
+  profileUrl: z.string().url().nullable().optional(),
 });
 
 export const executiveRecommendationSchema = z.object({

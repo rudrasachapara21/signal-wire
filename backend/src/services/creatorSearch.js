@@ -20,7 +20,7 @@
 import fetch from "node-fetch";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = "openai/gpt-oss-120b";
+const GROQ_MODEL = "groq/compound-mini";
 const TAVILY_API_URL = "https://api.tavily.com/search";
 const SEARCH_TIMEOUT_MS = 12_000;
 const GROQ_TIMEOUT_MS = 20_000;
@@ -28,6 +28,20 @@ const GROQ_TIMEOUT_MS = 20_000;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+export function validateInstagramUrl(urlStr) {
+  if (!urlStr || typeof urlStr !== "string") return null;
+  const trimmed = urlStr.trim();
+  const match = trimmed.match(/^https?:\/\/(?:www\.)?instagram\.com\/([a-zA-Z0-9._]+)\/?$/i);
+  if (!match) return null;
+  const handle = match[1].toLowerCase();
+  const reserved = new Set([
+    "p", "reels", "reel", "explore", "stories", "tv", "direct", "accounts",
+    "developer", "about", "help", "legal", "terms", "privacy", "directory", "download"
+  ]);
+  if (reserved.has(handle)) return null;
+  return `https://www.instagram.com/${handle}/`;
+}
 
 async function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
@@ -160,6 +174,8 @@ Return ONLY a JSON object:
  * Runs each query through Tavily in parallel, dedupes by URL, and returns
  * all combined result text for the extraction step.
  *
+ * Biases a subset of queries specifically to instagram.com while leaving others broad.
+ *
  * @param {string[]} queries
  * @returns {Promise<string>}  Combined search result text (deduplicated by URL)
  */
@@ -169,10 +185,10 @@ export async function searchCreators(queries) {
     throw new Error("TAVILY_API_KEY is not set.");
   }
 
-  // Run all queries in parallel
+  // Run all queries in parallel, biasing a subset to instagram.com specifically
   const results = await Promise.allSettled(
-    queries.map(async (query) => {
-      const body = JSON.stringify({
+    queries.map(async (query, idx) => {
+      const bodyObj = {
         api_key: tavilyKey,
         query,
         search_depth: "basic",
@@ -180,7 +196,14 @@ export async function searchCreators(queries) {
         include_raw_content: false,
         max_results: 5,
         topic: "general",
-      });
+      };
+
+      // Bias the first 3 queries specifically to Instagram
+      if (idx < 3) {
+        bodyObj.include_domains = ["instagram.com"];
+      }
+
+      const body = JSON.stringify(bodyObj);
 
       const res = await fetchWithTimeout(
         TAVILY_API_URL,
@@ -262,6 +285,7 @@ ${truncated}
 
 INSTRUCTIONS:
 - Extract ONLY creators whose names or Instagram/social handles are explicitly stated in the text above
+- For profile_url: extract the creator's actual Instagram profile URL (e.g. https://www.instagram.com/username/ or instagram.com/username) if mentioned in the snippet text or source URLs. If no direct Instagram profile URL is associated with them, set profile_url to null.
 - For the audience field: use the follower count ONLY if it is explicitly stated in the text (e.g. "250K followers", "1.2M subscribers"). If no count is in the text, return null — do NOT guess or make up a number.
 - Score match relevance 0-100 based on how well they fit the brand
 - If you find fewer than 3, return only what you actually found — do NOT make up extras
@@ -276,7 +300,7 @@ Return ONLY this JSON:
       "niche": "string — their content category e.g. 'Fitness · Supplements'",
       "audience": "string like '250K' or '1.2M' if mentioned in text, or null if not found",
       "match": number — 0-100 relevance to this brand,
-      "source_url": "string — URL where this creator was mentioned"
+      "profile_url": "string — direct Instagram profile URL like https://www.instagram.com/username/ if present in text/sources, or null"
     }
   ]
 }`;
@@ -299,12 +323,20 @@ Return ONLY this JSON:
     return trimmed;
   };
 
-  // Tag all real search results as verified
-  return parsed.creators.map((c) => ({
-    ...c,
-    audience: normaliseAudience(c.audience),
-    verified: true,
-  }));
+  // Tag all real search results as verified and validate profile URL
+  return parsed.creators.map((c) => {
+    const rawUrl = c.profile_url || c.source_url || null;
+    const validUrl = validateInstagramUrl(rawUrl);
+    return {
+      initials: c.initials,
+      name: c.name,
+      niche: c.niche,
+      audience: normaliseAudience(c.audience),
+      match: c.match,
+      profileUrl: validUrl,
+      verified: true,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -353,6 +385,7 @@ Return ONLY this JSON:
 
     return parsed.creators.slice(0, count).map((c) => ({
       ...c,
+      profileUrl: null,
       verified: false,
     }));
   } catch (err) {
@@ -369,11 +402,13 @@ Return ONLY this JSON:
         niche: `${niche} · Lifestyle`,
         audience: ["45K", "80K", "120K"][i] ?? "60K",
         match: [72, 68, 65][i] ?? 65,
+        profileUrl: null,
         verified: false,
       };
     });
   }
 }
+
 
 // ---------------------------------------------------------------------------
 // Main orchestrator — public API

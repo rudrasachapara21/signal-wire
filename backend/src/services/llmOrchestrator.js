@@ -253,12 +253,12 @@ CONSTRAINTS:
 export async function analyzeForFrontend(profile) {
   const prompt = buildFrontendPrompt(profile);
 
-  const CREATOR_SEARCH_TIMEOUT_MS = 8_000;
+  const CREATOR_SEARCH_TIMEOUT_MS = 18_000;
   const creatorSearchPromise = Promise.race([
     searchAndGetCreators(profile, 3),
     new Promise((_, reject) =>
       setTimeout(
-        () => reject(new Error("Creator search timed out after 8s")),
+        () => reject(new Error("Creator search timed out after 18s")),
         CREATOR_SEARCH_TIMEOUT_MS
       )
     ),

@@ -20,6 +20,7 @@ export interface Creator {
   audience: string | null; // null when follower count unknown
   match: number; // percentage 0–100
   verified?: boolean;
+  profileUrl?: string | null;
 }
 
 export interface StrategyReportResponse {
