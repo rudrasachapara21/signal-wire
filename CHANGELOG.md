@@ -5,6 +5,15 @@ All notable changes to the Signal Wire project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-12
+
+### Added
+- **Accurate Creator Search & Profile Validation**: Biased Tavily search queries toward Instagram domain results and implemented strict handle regex validation (`validateInstagramUrl`) to extract direct profile URLs while dropping unverified links.
+- **Clickable Creator Cards**: Enhanced creator shortlist cards with direct clickable profile links opening in a new tab (`target="_blank" rel="noopener noreferrer"`) and visual Instagram badges for verified profiles.
+- **On-Demand AI Creator Intros ("Know More")**: New `POST /api/creators/intro` endpoint using ToS-safe web search via Tavily and Groq LLM synthesis to generate 2-3 sentence creator intros covering content style, niche focus, and brand work.
+- **Non-Hallucination Fallback**: Creator intros return an honest `"Limited public information available about this creator."` message with `sourcesFound: false` when search data is sparse, preventing fake AI details.
+- **Prisma Intro Caching**: Added `CreatorIntro` database model to SQLite via Prisma ORM with a 30-day cache freshness window to prevent duplicate web search API calls on repeated clicks.
+
 ---
 
 ## [1.1.0] - 2026-08-23

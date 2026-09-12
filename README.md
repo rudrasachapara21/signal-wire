@@ -1,4 +1,4 @@
-# Signal Wire — AI Ad Strategy Advisor (v1.1.0)
+# Signal Wire — AI Ad Strategy Advisor (v1.2.0)
 
 Signal Wire is an intelligent digital advertising strategy platform designed for small and medium businesses. By analyzing a brand's product offerings, target audience, and monthly advertising budget, Signal Wire generates practical, actionable strategy reports featuring recommended platform mixes, budget allocations, creator shortlists, executive recommendations, and 30-day tactical action plans.
 
@@ -77,8 +77,11 @@ Open `http://localhost:8080` in your browser.
 
 ---
 
-## ✨ Features (v1.1.0 Release)
+## ✨ Features (v1.2.0 Release)
 
+- 📸 **Accurate Creator Search & Verified Instagram Links**: Live creator discovery with domain-biased search, direct Instagram profile URL extraction, regex URL validation, and interactive clickable profile cards.
+- 💡 **On-Demand AI Creator Intros ("Know More")**: Instant, ToS-safe 2-3 sentence AI creator intros generated from public web search results without scraping, featuring honest non-hallucination fallback for sparse profiles.
+- 💾 **Creator Intro Caching**: Local database caching (`CreatorIntro` model in Prisma) with 30-day freshness to eliminate duplicate search API calls on repeated "Know more" clicks.
 - 🔐 **Real Backend Authentication**: Secure email/password auth using bcrypt password hashing, JWT session management via `httpOnly` cookies, and persistent user accounts in SQLite.
 - ⚡ **Multi-Provider AI Fallback Chain**: Robust LLM orchestration that automatically falls through providers (`Groq` → `OpenRouter` → `Gemini`) to guarantee high uptime under free-tier quota limits.
 - 🛡️ **Zod Validation & LLM Auto-Repair**: Hardened backend layer enforcing strict schema validation (`reportSchema.js`) with automatic LLM re-prompting feedback loops when JSON errors occur.
