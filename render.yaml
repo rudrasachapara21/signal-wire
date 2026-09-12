@@ -31,8 +31,9 @@ services:
   # ---------------------------------------------------------------------------
   # Frontend Static Site (React + Vite + TanStack)
   # ---------------------------------------------------------------------------
-  - type: static
+  - type: web
     name: signal-wire-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: .output/public
