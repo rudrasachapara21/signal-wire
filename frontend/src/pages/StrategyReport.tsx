@@ -4,6 +4,7 @@ import {
   BarChart3,
   BookOpen,
   ChevronUp,
+  ExternalLink,
   GitBranch,
   HelpCircle,
   Loader2,
@@ -17,6 +18,24 @@ import { useReport, type StoredReport } from "@/context/ReportContext";
 import { Button } from "@/components/ui/button";
 
 const API_BASE = import.meta.env["VITE_API_BASE_URL"] ?? "http://localhost:5001";
+
+function InstagramIcon({ className = "size-3.5" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+    </svg>
+  );
+}
 
 // ─── Suggestion chips ─────────────────────────────────────────────────────────
 
@@ -342,6 +361,67 @@ export function StrategyReport() {
   const { report, currentReportId, reports, applyRefinement, updateFeedback } = useReport();
   const navigate = useNavigate();
 
+  const [introStates, setIntroStates] = useState<
+    Record<
+      string,
+      { loading: boolean; text?: string; sourcesFound?: boolean; error?: string; open: boolean }
+    >
+  >({});
+
+  async function handleKnowMore(c: { name: string; niche: string; profileUrl?: string | null }) {
+    const key = c.name;
+    const current = introStates[key];
+
+    if (current?.text) {
+      setIntroStates((prev) => ({
+        ...prev,
+        [key]: { ...prev[key], open: !prev[key].open },
+      }));
+      return;
+    }
+
+    setIntroStates((prev) => ({
+      ...prev,
+      [key]: { loading: true, open: true },
+    }));
+
+    try {
+      const res = await fetch(`${API_BASE}/api/creators/intro`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: c.name,
+          niche: c.niche,
+          profileUrl: c.profileUrl ?? null,
+        }),
+      });
+
+      const data = (await res.json()) as { introText?: string; sourcesFound?: boolean; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? `Server error ${res.status}`);
+      }
+
+      setIntroStates((prev) => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          text: data.introText ?? "No details found.",
+          sourcesFound: data.sourcesFound ?? false,
+          open: true,
+        },
+      }));
+    } catch (err: unknown) {
+      setIntroStates((prev) => ({
+        ...prev,
+        [key]: {
+          loading: false,
+          error: err instanceof Error ? err.message : "Failed to load creator intro.",
+          open: true,
+        },
+      }));
+    }
+  }
+
   if (!report) {
     return (
       <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center text-center">
@@ -507,27 +587,98 @@ export function StrategyReport() {
           {/* Creator shortlist */}
           <article className="rounded-lg border border-border bg-card p-5 sm:p-6">
             <h2 className="text-base font-bold sm:text-lg">Creator shortlist</h2>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 sm:mt-5">
-              {creators.map((c) => (
-                <div
-                  key={c.name}
-                  className="rounded-lg border border-border p-4 transition-shadow hover:shadow-md"
-                >
-                  <span className="grid size-10 place-items-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
-                    {c.initials}
-                  </span>
-                  <p className="mt-3 text-sm font-semibold">{c.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{c.niche}</p>
-                  {c.audience ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {c.audience} followers
-                    </p>
-                  ) : null}
-                  <p className="mt-3 text-xs font-semibold text-primary">
-                    {c.match}% relevance
-                  </p>
-                </div>
-              ))}
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:mt-5">
+              {creators.map((c) => {
+                const introState = introStates[c.name];
+                return (
+                  <div
+                    key={c.name}
+                    className="flex flex-col justify-between rounded-lg border border-border bg-card p-4 transition-shadow hover:shadow-md"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="grid size-10 place-items-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
+                          {c.initials}
+                        </span>
+                        {c.verified && (
+                          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                            Verified Real
+                          </span>
+                        )}
+                      </div>
+
+                      {c.profileUrl ? (
+                        <a
+                          href={c.profileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-3 group/link inline-flex items-center gap-1.5 text-sm font-semibold text-foreground hover:text-primary hover:underline"
+                          title={`Visit ${c.name} on Instagram`}
+                        >
+                          <span>{c.name}</span>
+                          <InstagramIcon className="size-3.5 shrink-0 text-pink-500 transition-transform group-hover/link:scale-110" />
+                          <ExternalLink size={12} className="shrink-0 text-muted-foreground group-hover/link:text-primary" />
+                        </a>
+                      ) : (
+                        <p className="mt-3 text-sm font-semibold text-foreground">{c.name}</p>
+                      )}
+
+                      <p className="mt-1 text-xs text-muted-foreground">{c.niche}</p>
+                      {c.audience ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {c.audience} followers
+                        </p>
+                      ) : null}
+                      <p className="mt-2 text-xs font-semibold text-primary">
+                        {c.match}% relevance
+                      </p>
+                    </div>
+
+                    {/* Know More section */}
+                    <div className="mt-3.5 pt-3 border-t border-border/60">
+                      <button
+                        type="button"
+                        id={`know-more-${c.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+                        onClick={() => void handleKnowMore(c)}
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline focus:outline-none"
+                      >
+                        <Sparkles size={12} className="shrink-0" />
+                        <span>{introState?.open && introState?.text ? "Hide intro" : "Know more"}</span>
+                      </button>
+
+                      {introState?.open && (
+                        <div className="mt-2.5 rounded-md bg-muted/40 p-2.5 text-xs transition-all border border-border/40">
+                          {introState.loading ? (
+                            <div className="flex items-center gap-2 text-muted-foreground py-1">
+                              <Loader2 size={13} className="animate-spin text-primary shrink-0" />
+                              <span>Researching creator…</span>
+                            </div>
+                          ) : introState.error ? (
+                            <p className="text-destructive text-[11px]">{introState.error}</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              <p
+                                className={`leading-relaxed ${
+                                  introState.sourcesFound === false
+                                    ? "text-muted-foreground italic"
+                                    : "text-foreground"
+                                }`}
+                              >
+                                {introState.text}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground/70">
+                                {introState.sourcesFound !== false
+                                  ? "Synthesized from public web search results"
+                                  : "Limited web coverage found"}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </article>
         </div>
