@@ -34,3 +34,15 @@ model Report {
   refinedFrom   Report?   @relation("RefinementChain", fields: [refinedFromId], references: [id])
   refinements   Report[]  @relation("RefinementChain")
 }
+
+model CreatorIntro {
+  id           String   @id @default(cuid())
+  name         String
+  niche        String
+  introText    String
+  sourcesFound Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@unique([name, niche])
+}
+

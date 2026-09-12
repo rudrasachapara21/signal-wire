@@ -18,9 +18,33 @@ import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import requireAuth from "../middleware/requireAuth.js";
 import { refineReport } from "../services/llmOrchestrator.js";
+import { getOrGenerateCreatorIntro } from "../services/creatorIntroService.js";
 import { expensiveOperationLimiter } from "../middleware/rateLimiters.js";
 
 const router = Router();
+
+// ── POST /api/creators/intro — Fetch or generate creator intro ──────────────
+
+router.post("/creators/intro", expensiveOperationLimiter, async (req, res) => {
+  const { name, niche, profileUrl } = req.body ?? {};
+
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return res.status(400).json({ error: "name is required." });
+  }
+
+  try {
+    const result = await getOrGenerateCreatorIntro({
+      name: name.trim(),
+      niche: typeof niche === "string" ? niche.trim() : "",
+      profileUrl: typeof profileUrl === "string" ? profileUrl.trim() : null,
+    });
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error("[creators/intro]", err);
+    return res.status(500).json({ error: "Failed to generate creator intro." });
+  }
+});
+
 
 // ── POST /api/reports — Save a new report ────────────────────────────────────
 
