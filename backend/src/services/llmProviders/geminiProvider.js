@@ -12,7 +12,7 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const GEMINI_MODEL = "gemini-2.0-flash-lite";
+const GEMINI_MODEL = "gemini-3.5-flash";
 const GEMINI_TIMEOUT_MS = 45_000;
 
 /**

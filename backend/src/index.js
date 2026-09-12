@@ -67,7 +67,11 @@ if (missingOptional.length > 0) {
 const app = express();
 
 // CORS – explicitly allow the frontend dev origins and the production origin.
-// In production, lock this down to the deployed frontend URL.
+const configuredOrigins = (process.env.ALLOWED_ORIGINS || process.env.CORS_ORIGIN || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://localhost:3001",
@@ -77,7 +81,7 @@ const ALLOWED_ORIGINS = [
   "http://localhost:8081",
   "http://127.0.0.1:8080",
   "http://127.0.0.1:8081",
-  ...(process.env.CORS_ORIGIN ? [process.env.CORS_ORIGIN] : []),
+  ...configuredOrigins,
 ];
 
 app.use(

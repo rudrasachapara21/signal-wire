@@ -21,11 +21,11 @@ import fetch from "node-fetch";
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-// Primary free model — NVIDIA Nemotron 3 Ultra 550B (verified free on OpenRouter Aug 2026)
-const OPENROUTER_PRIMARY_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free";
+// Primary free model — NVIDIA Nemotron 3.5 Lightning (verified free on OpenRouter 2026)
+const OPENROUTER_PRIMARY_MODEL = "nvidia/nemotron-3.5-lightning:free";
 
-// Secondary free model — Google Gemma 4 31B (in case primary is overloaded)
-const OPENROUTER_FALLBACK_MODEL = "google/gemma-4-31b-it:free";
+// Secondary free model — Google Gemma 3 27B (in case primary is overloaded)
+const OPENROUTER_FALLBACK_MODEL = "google/gemma-3-27b-it:free";
 
 const OPENROUTER_TIMEOUT_MS = 45_000; // Free tier models can be slower
 
