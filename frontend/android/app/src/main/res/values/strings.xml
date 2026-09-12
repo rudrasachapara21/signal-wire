@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Signal Wire</string>
+    <string name="title_activity_main">Signal Wire</string>
+    <string name="package_name">com.signalwire.app</string>
+    <string name="custom_url_scheme">com.signalwire.app</string>
+</resources>

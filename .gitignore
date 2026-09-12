@@ -12,6 +12,8 @@ backend/node_modules/
 # Build output
 frontend/dist/
 frontend/build/
+frontend/.output/
+frontend/android/app/build/
 backend/dist/
 
 # OS / editor junk
