@@ -5,7 +5,15 @@ All notable changes to the Signal Wire project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-09-12
+
+### Fixed
+- **Android APK: Blank screen on launch**: Capacitor's `webDir` pointed the Android WebView at locally bundled static assets. Because Signal Wire's frontend uses TanStack Start (SSR), the client router requires the `window.$_TSR` hydration object produced server-side at request time. Without a server, that object was absent and React never mounted — resulting in a blank white screen. Fixed by adding `server.url: "https://signal-wire-frontend.onrender.com"` to `capacitor.config.ts`, directing the Capacitor WebView to load from the live Render deployment. The Android APK now boots into the full SSR-rendered Signal Wire UI with all routes functional.
+
+---
+
 ## [1.2.0] - 2026-09-12
+
 
 ### Added
 - **Accurate Creator Search & Profile Validation**: Biased Tavily search queries toward Instagram domain results and implemented strict handle regex validation (`validateInstagramUrl`) to extract direct profile URLs while dropping unverified links.
